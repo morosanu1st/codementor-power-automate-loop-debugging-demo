@@ -1,0 +1,46 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Manual": { "type": "Request", "kind": "Button", "inputs": { "schema": {} } }
+    },
+    "actions": {
+      "List_rows": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": { "host": { "connectionName": "shared_excelonlinebusiness", "operationId": "GetItems" }, "parameters": { "table": "SourceTable" } }
+      },
+      "Initialize_lastId": {
+        "type": "InitializeVariable",
+        "runAfter": { "List_rows": ["Succeeded"] },
+        "inputs": { "variables": [ { "name": "lastId", "type": "string", "value": "" } ] }
+      },
+      "Apply_to_each": {
+        "type": "Foreach",
+        "foreach": "@body('List_rows')?['value']",
+        "runAfter": { "Initialize_lastId": ["Succeeded"] },
+        "runtimeConfiguration": { "concurrency": { "repetitions": 20 } },
+        "actions": {
+          "Set_variable": {
+            "type": "SetVariable",
+            "runAfter": {},
+            "inputs": { "name": "lastId", "value": "@items('Apply_to_each')?['Id']" }
+          }
+        }
+      },
+      "Add_row_to_table": {
+        "type": "OpenApiConnection",
+        "runAfter": { "Apply_to_each": ["Succeeded"] },
+        "inputs": {
+          "host": { "connectionName": "shared_excelonlinebusiness", "operationId": "AddRowV2" },
+          "parameters": {
+            "table": "TargetTable",
+            "item/Id": "@variables('lastId')",
+            "item/Name": "@body('List_rows')?['value'][0]?['Name']"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Manual": { "type": "Request", "kind": "Button", "inputs": { "schema": {} } }
+    },
+    "actions": {
+      "List_rows": {
+        "type": "OpenApiConnection",
+        "runAfter": {},
+        "inputs": { "host": { "connectionName": "shared_excelonlinebusiness", "operationId": "GetItems" }, "parameters": { "table": "SourceTable" } }
+      },
+      "Apply_to_each": {
+        "type": "Foreach",
+        "foreach": "@body('List_rows')?['value']",
+        "runAfter": { "List_rows": ["Succeeded"] },
+        "runtimeConfiguration": { "concurrency": { "repetitions": 1 } },
+        "actions": {
+          "Compose_current_id": {
+            "type": "Compose",
+            "runAfter": {},
+            "inputs": "@items('Apply_to_each')?['Id']"
+          },
+          "Add_row_to_table": {
+            "type": "OpenApiConnection",
+            "runAfter": { "Compose_current_id": ["Succeeded"] },
+            "inputs": {
+              "host": { "connectionName": "shared_excelonlinebusiness", "operationId": "AddRowV2" },
+              "parameters": {
+                "table": "TargetTable",
+                "item/Id": "@outputs('Compose_current_id')",
+                "item/Name": "@items('Apply_to_each')?['Name']"
+              }
+            }
+          },
+          "Log_failure": {
+            "type": "Compose",
+            "runAfter": { "Add_row_to_table": ["Failed", "TimedOut"] },
+            "inputs": "Row @{outputs('Compose_current_id')} failed: @{actions('Add_row_to_table')?['error']?['message']}"
+          }
+        }
+      }
+    }
+  }
+}
